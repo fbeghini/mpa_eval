@@ -1,0 +1,1 @@
+docker run --volume="${PWD}/input:/bbx/mnt/input:ro" --volume="${PWD}/output:/bbx/mnt/output:rw" --volume="/shares/CIBIO-Storage/CM/scratch/data/meta/CAMI_datasets:/bbx/mnt/CAMI_datasets:rw" --rm metaphlan277

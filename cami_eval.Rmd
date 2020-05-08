@@ -1,0 +1,566 @@
+---
+title: "CAMI Evaluation"
+author: "Francesco Beghini"
+date: "May 28, 2019"
+output:   
+  prettydoc::html_pretty:
+    theme: architect
+    highlight: github
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, fig.path = 'cami_eval_plots/', dev = c('png','svg'), warning = FALSE)
+library(magrittr)
+
+library(ggplot2)
+library(tibble)
+library(forcats)
+library(dplyr)
+library(tidyr)
+library(readr)
+library(scales)
+
+theme_cm <- function(){
+  theme_minimal() +
+  theme(text = element_text(family = "sans-serif", size = 10, colour = "black"),
+        panel.grid = element_blank(),
+        axis.text = element_text(family = "sans-serif", size = 10, colour = "black"),
+        strip.background = element_rect(colour = "transparent", fill = "transparent"),
+        strip.text = element_text(family = "sans-serif", size = 12, colour = "black"))
+}
+
+cm_palette <- c('#e41a1c','#377eb8','#4daf4a','#984ea3','#FF8F33','#FFE133','#6D3100')
+setwd('/shares/CIBIO-Storage/CM/mir/projects/fbeghini_CAMIEval/')
+
+
+get_binary <- function(tool, gold_standard, check_group = FALSE){
+    taxid_column <- intersect(c("@@TAXID", "tool_taxid"), colnames(tool))
+    if (length(taxid_column) == 1){
+      taxa_gs = gold_standard[,taxid_column, drop=TRUE]
+      taxa_s = tool[, taxid_column, drop=TRUE]
+      if(check_group){
+        species_in_group <- intersect(tool[, 'oldtaxid', drop=TRUE], taxa_gs)
+        if (length(species_in_group) >0)
+        {
+          taxa_s = unique(c(setdiff(taxa_s, tool[tool$oldtaxid %in% species_in_group,2, drop = TRUE]), species_in_group))
+        }
+      }
+
+    } else {
+      taxa_s = tool$tool_name
+      taxa_gs = gold_standard$gs_name
+    }
+
+    taxa_not_present_in_gs = setdiff(taxa_s,taxa_gs)
+    taxa_not_present_in_s = setdiff(taxa_gs,taxa_s)
+
+    tp = length(intersect(taxa_s,taxa_gs))
+    fp = length(intersect(taxa_s,taxa_not_present_in_gs))
+    fn = length(intersect(taxa_not_present_in_s,taxa_gs))
+
+    precision = tp / (tp+fp)
+    recall = tp / (tp + fn)
+    f1 = 2 * ((precision * recall) / (precision + recall))
+
+    return(c("TP" = tp, 
+             "FP" = fp,
+             "FN" = fn, 
+             "Precision" = precision, 
+             "Recall" = recall, 
+             "F1 score" = f1))
+}
+
+```
+# CAMI Datasets
+```{r include=FALSE}
+cami_folder <-
+  '/shares/CIBIO-Storage/CM/mir/projects/fbeghini_CAMIEval/opal_out/CAMI_II'
+opal_resutls <- tibble()
+for (dataset in c(
+"CAMI_Airways_statq",
+"CAMI_Gastrointestinal_tract_statq",
+"CAMI_Oral_statq",
+"CAMISIM_MOUSEGUT",
+"CAMI_Skin_statq",
+"CAMI_Urogenital_tract_statq"
+)) {
+opal_ds_result <-
+  readr::read_tsv(paste(cami_folder, dataset, "results.tsv", sep = '/')) %>% dplyr::filter(tool != 'Gold standard') %>% dplyr::filter(rank == 'species') %>% dplyr::bind_cols(dataset =   rep(stringr::str_split(dataset, '_', n = 2)[[1]][2], nrow(.)))
+  
+opal_resutls %<>% bind_rows(opal_ds_result)
+}
+opal_resutls %<>% filter(!(
+  tool %in% c(
+  'mpa2_201901','mpa292_201901', 'mpa293_201901', 'clark', 'mOTUs2_precision', 'mOTUs2_parenthesis', 'Bracken_t10_refseq', 'Bracken_t10_minikraken', 'mpa294_201901_variants')
+  ))
+  
+opal_resutls$tool <- factor(opal_resutls$tool, 
+                              labels = c('Bracken_MiniKraken', 'Bracken_refseq', 'mOTUs2', 'mOTUs2', 'MetaPhlAn2 v296', 'MetaPhlAn2 v20', 'MetaPhlAn2 v29'))
+opal_resutls$tool <- factor(opal_resutls$tool, levels = c('MetaPhlAn2 v29', 'MetaPhlAn2 v296', 'MetaPhlAn2 v20', 'Bracken_MiniKraken', 'Bracken_refseq', 'mOTUs2'))
+```
+
+```{r all, fig.width=10, fig.height=6, fig.retina=TRUE}
+opal_resutls %>%
+  filter(metric %in% c('Purity (precision)', 'Completeness (recall)', 'F1 score')) %>%
+  mutate(metric = factor(metric, levels = c('F1 score', 'Purity (precision)', 'Completeness (recall)'), labels = c('F1 score','Precision', 'Recall') )) %>%
+  mutate(dataset = factor(dataset, levels = c('Airways', 'Gastrointestinal_tract','Oral','Skin','Urogenital_tract', 'MOUSEGUT'), labels = c('Airways', 'Gastrointestinal\ntract','Oral','Skin','Urogenital\ntract', 'Mouse\ngut'))) %>% 
+ggplot() +
+  geom_boxplot(aes(tool, value, fill=tool)) +
+  facet_grid(metric ~ dataset, scales = 'free_y') +
+  theme_cm() +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        strip.text.y = element_text(angle = 0),
+        legend.position = 'bottom',
+        panel.spacing.y = unit(1,'lines')) + 
+  scale_fill_manual(values = cm_palette)
+```
+
+```{r}
+x <- opal_resutls %>%
+  filter(metric %in% c('Purity (precision)', 'Completeness (recall)', 'F1 score')) %>%
+  mutate(metric = factor(metric, levels = c('F1 score', 'Purity (precision)', 'Completeness (recall)'), labels = c('F1 score','Precision', 'Recall') )) %>%
+  mutate(dataset = factor(dataset, levels = c('Airways', 'Gastrointestinal_tract','Oral','Skin','Urogenital_tract', 'MOUSEGUT'), labels = c('Airways', 'Gastrointestinal\ntract','Oral','Skin','Urogenital\ntract', 'Mouse\ngut'))) 
+```
+
+## Plots per measure
+```{r, fig.width=6, fig.height=5, fig.retina=TRUE}
+pr <- x %>% 
+  filter(metric == 'Precision') %>% 
+ggplot() +
+  geom_boxplot(aes(tool, value, fill=tool)) +
+  facet_grid(. ~ dataset, scales = 'free_y') +
+  ylab('Precision') +
+  xlab('Tool') +
+  theme_cm() +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        strip.text.y = element_text(angle = 0),
+        legend.position = 'none',
+        panel.spacing.y = unit(1,'lines'),
+        panel.spacing.x = unit(1,'lines')) + 
+  scale_fill_manual(values = cm_palette)
+
+re <- x %>% 
+  filter(metric == 'Recall') %>% 
+ggplot() +
+  geom_boxplot(aes(tool, value, fill=tool)) +
+  facet_grid(. ~ dataset, scales = 'free_y') +
+  ylab('Recall') +
+  xlab('Tool') +
+  theme_cm() +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        strip.text.y = element_text(angle = 0),
+        legend.position = 'none',
+        panel.spacing.y = unit(1,'lines'),
+        panel.spacing.x = unit(1,'lines')) + 
+  scale_fill_manual(values = cm_palette)
+
+f1 <- x %>% 
+  filter(metric == 'F1 score') %>% 
+ggplot() +
+  geom_boxplot(aes(tool, value, fill=tool)) +
+  facet_grid(. ~ dataset, scales = 'free_y') +
+  ylab('F1 score') +
+  xlab('Tool') +
+  theme_cm() +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        strip.text.y = element_text(angle = 0),
+        legend.position = 'none',
+        panel.spacing.y = unit(1,'lines'),
+        panel.spacing.x = unit(1,'lines')) + 
+  scale_fill_manual(values = cm_palette)
+```
+
+```{r precision_all, fig.width=10, fig.height=3, fig.retina=TRUE}
+pr + theme(axis.line = element_line())
+```
+
+```{r recall_all, fig.width=10, fig.height=3, fig.retina=TRUE}
+re + theme(axis.line = element_line())
+```
+
+```{r f1_all, fig.width=10, fig.height=3, fig.retina=TRUE}
+f1 + theme(axis.line = element_line(), legend.position = 'bottom')
+#+ theme(axis.text = element_text(colour = 'white'), strip.text = element_text(colour = 'white'))
+```
+
+
+```{r bc_all, fig.width=10, fig.height=3, fig.retina=TRUE}
+opal_resutls %>%
+  filter(metric %in% c('Bray-Curtis distance')) %>%
+  filter(tool %in% c('MetaPhlAn2 v29', 'MetaPhlAn2 v29 variants')) %>% 
+  mutate(metric = factor(metric, labels = c('Bray-Curtis\ndistance'))) %>%
+  mutate(dataset = factor(dataset, levels = c('Airways', 'Gastrointestinal_tract','Oral','Skin','Urogenital_tract', 'MOUSEGUT'), labels = c('Airways', 'Gastrointestinal\ntract','Oral','Skin','Urogenital\ntract', 'Mouse\ngut'))) %>%
+  filter(dataset != 'Mouse\ngut') %>% 
+ggplot() +
+  geom_boxplot(aes(tool, value, fill=tool)) +
+  facet_grid(. ~ dataset, scales = 'free_y') +
+  theme_cm() +
+  ylab('Bray-Curtis distance') +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        strip.text.y = element_text(angle = 0),
+        panel.spacing.x = unit(1,'lines'),
+        legend.position = 'bottom',
+        axis.line = element_line()) + 
+  scale_fill_manual(values = cm_palette)
+```
+
+```{r bc_mouse, fig.width=2.5, fig.height=3, fig.retina=TRUE}
+opal_resutls %>%
+  filter(metric %in% c('Bray-Curtis distance')) %>%
+  mutate(metric = factor(metric, labels = c('Bray-Curtis\ndistance'))) %>%
+  mutate(dataset = factor(dataset, levels = c('Airways', 'Gastrointestinal_tract','Oral','Skin','Urogenital_tract', 'MOUSEGUT'), labels = c('Airways', 'Gastrointestinal\ntract','Oral','Skin','Urogenital\ntract', 'Mouse\ngut'))) %>%
+  filter(dataset == 'Mouse\ngut') %>% 
+ggplot() +
+  geom_boxplot(aes(tool, value, fill=tool)) +
+  facet_grid(. ~ dataset, scales = 'free_y') +
+  theme_cm() +
+  ylab('Bray-Curtis distance') +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        strip.text.y = element_text(angle = 0),
+        legend.position = 'none') + 
+  scale_fill_manual(values = cm_palette)
+```
+
+
+## Correlation plot CAMI dataset
+```{r include=FALSE}
+all_percent <- data.frame()
+all_binary_CAMI <- data.frame()
+for (dataset in c('CAMI_Airways','CAMI_Gastrointestinal_tract','CAMI_Oral','CAMISIM_MOUSEGUT','CAMI_Skin','CAMI_Urogenital_tract')){
+  for (sample in list.files(paste0('/shares/CIBIO-Storage/CM/scratch/data/meta/CAMI_datasets/',dataset,'/short_read/'), pattern = 'taxonomic_profile_.*.txt$')) {
+    sample_id <- sample %>% stringr::str_remove('taxonomic_profile_') %>% stringr::str_remove('.txt')
+    
+    gs <- suppressWarnings(read_tsv(paste0('/shares/CIBIO-Storage/CM/scratch/data/meta/CAMI_datasets/',dataset,'/short_read/taxonomic_profile_',sample_id, '.txt'), skip = 3)) %>% 
+    filter(RANK == 'species') %>%
+    filter(PERCENTAGE > 0) %>%
+    select(`@@TAXID`, gs_name=TAXPATHSN, gs_PERCENTAGE=PERCENTAGE) 
+    
+    mpa <- suppressWarnings(read_tsv(paste0('/shares/CIBIO-Storage/CM/mir/projects/fbeghini_CAMIEval/CAMI_II/',dataset,'/mpa2_v294_201901/sample_', sample_id, '.orig.cami'), skip = 5)) %>%
+    filter(RANK == 'species') %>%
+    select(`@@TAXID`, tool_name=TAXPATHSN, tool_PERCENTAGE=PERCENTAGE)
+    
+    mpa20 <- suppressWarnings(read_tsv(paste0('/shares/CIBIO-Storage/CM/mir/projects/fbeghini_CAMIEval/CAMI_II/',dataset,'/mpa2_v20/sample_', sample_id, '.profile'), skip = 4)) %>%
+    filter(RANK == 'species') %>%
+    select(`@@TAXID`, tool_name=TAXPATHSN, tool_PERCENTAGE=PERCENTAGE)
+    
+    motus <- suppressWarnings(read_tsv(paste0('/shares/CIBIO-Storage/CM/mir/projects/fbeghini_CAMIEval/CAMI_II/',dataset,'/mOTUs2_output/sample_', sample_id, '.motus'), skip = 8)) %>%
+    filter(RANK == 'species') %>%
+    select(`@@TAXID`, tool_name=TAXPATHSN, tool_PERCENTAGE=PERCENTAGE)
+    
+    minikraken <- suppressWarnings(read_tsv(paste0('/shares/CIBIO-Storage/CM/mir/projects/fbeghini_CAMIEval/CAMI_II/',dataset,'/bracken_output_minikraken/sample_', sample_id, '_bracken.profile'), skip = 4)) %>%
+    filter(RANK == 'species') %>%
+    select(`@@TAXID`, tool_name=TAXPATHSN, tool_PERCENTAGE=PERCENTAGE)
+        
+    bracken_refseq <- suppressWarnings(read_tsv(paste0('/shares/CIBIO-Storage/CM/mir/projects/fbeghini_CAMIEval/CAMI_II/',dataset,'/bracken_output/sample_', sample_id, '_bracken.profile'), skip = 4)) %>%
+    filter(RANK == 'species') %>%
+    select(`@@TAXID`, tool_name=TAXPATHSN, tool_PERCENTAGE=PERCENTAGE)
+    
+    bin <- rbind(get_binary(mpa, gs),
+          get_binary(mpa20, gs),
+          get_binary(motus, gs),
+          get_binary(bracken_refseq, gs),
+          get_binary(minikraken, gs)
+    ) %>% data.frame %>% cbind(sample_id) %>% cbind(tool = c('MetaPhlAn2 v29','MetaPhlAn2 v20', 'mOTUs2', 'Bracken RefSeq', 'Bracken MiniKraken'))
+    
+    mpa <- full_join(gs, mpa, by=c('@@TAXID'= '@@TAXID')) %>% mutate_if(is.numeric, funs(ifelse(is.na(.), 0, .))) %>% cbind(tool='MetaPhlAn2 v293', dataset)
+    mpa20 <- full_join(gs, mpa20, by=c('@@TAXID'= '@@TAXID')) %>% mutate_if(is.numeric, funs(ifelse(is.na(.), 0, .))) %>% cbind(tool='MetaPhlAn2 v20', dataset)
+    motus <- full_join(gs, motus, by=c('@@TAXID'= '@@TAXID')) %>% mutate_if(is.numeric, funs(ifelse(is.na(.), 0, .))) %>% cbind(tool='mOTUs2', dataset)
+    minikraken <- full_join(gs, minikraken, by=c('@@TAXID'= '@@TAXID')) %>% mutate_if(is.numeric, funs(ifelse(is.na(.), 0, .))) %>% cbind(tool='Bracken MiniKraken', dataset)
+    bracken_refseq <- full_join(gs, bracken_refseq, by=c('@@TAXID'= '@@TAXID')) %>% mutate_if(is.numeric, funs(ifelse(is.na(.), 0, .))) %>% cbind(tool='Bracken RefSeq', dataset)
+    
+    all_binary_CAMI <- rbind(bin, all_binary_CAMI)
+    all_percent <- rbind(all_percent, mpa, mpa20, motus, minikraken, bracken_refseq)
+  }
+}
+```
+
+
+```{r corr_plot_relab}
+gathered_all_percent <- all_percent %>% 
+gather(key = "dataset", value  = "value", dataset) 
+
+gathered_all_percent %>%
+  group_by(tool) %>% 
+  summarise(corr = cor(gs_PERCENTAGE, tool_PERCENTAGE))
+
+gathered_all_percent%>% 
+ggplot() + 
+  geom_point(aes(gs_PERCENTAGE,tool_PERCENTAGE, color=tool), alpha=0.3) +
+  theme_cm() +
+   theme(axis.line = element_line()) +
+  # ggtitle( paste0("Relative abundance\ncor=", formatC(corr_vals, 3, format='f'))) +
+  xlab('Expected Relative abundance (%)') + 
+  ylab('Predicted Relative Abunance (%)') +
+  facet_wrap(tool~.) +
+  scale_color_manual(values=cm_palette, name = 'Tools') +
+  scale_x_log10(labels = comma_format(accuracy = .001,  drop0trailing = TRUE)) +
+  scale_y_log10(labels = comma_format(accuracy = .001,  drop0trailing = TRUE)) +
+  expand_limits(x=100, y=100)+guides(color=FALSE)
+```
+
+
+## Merge groups
+```{r include=FALSE}
+all_percent <- data.frame()
+all_binary_CAMI <- data.frame()
+
+merged_mapping <- read_tsv('/shares/CIBIO-Storage/CM/scratch/users/francesco.beghini/hg/chocophlan/merged_mapping')
+for (dataset in c('CAMI_Airways','CAMI_Gastrointestinal_tract','CAMI_Oral','CAMISIM_MOUSEGUT','CAMI_Skin','CAMI_Urogenital_tract')){
+  for (sample in list.files(paste0('/shares/CIBIO-Storage/CM/scratch/data/meta/CAMI_datasets/',dataset,'/short_read/'), pattern = 'taxonomic_profile_.*.txt$')) {
+    sample_id <- sample %>% stringr::str_remove('taxonomic_profile_') %>% stringr::str_remove('.txt')
+    gs <- suppressWarnings(read_tsv(paste0('/shares/CIBIO-Storage/CM/scratch/data/meta/CAMI_datasets/',dataset,'/short_read/taxonomic_profile_',sample_id, '.txt'), skip = 3)) %>% 
+    filter(RANK == 'species') %>%
+    filter(PERCENTAGE > 0) %>%
+    select(`@@TAXID`, gs_name=TAXPATHSN, gs_PERCENTAGE=PERCENTAGE) 
+    
+    mpa <- suppressWarnings(read_tsv(paste0('/shares/CIBIO-Storage/CM/mir/projects/fbeghini_CAMIEval/CAMI_II/',dataset,'/mpa2_v296_201901/sample_', sample_id, '.profile'), skip = 5, col_names = c('clade_name','@@TAXID','relab','merged_into'))) %>%
+    filter(stringr::str_detect(clade_name, 's__')) %>%
+    mutate(`@@TAXID` = as.numeric(stringr::str_split(`@@TAXID`, '\\|', simplify = TRUE)[,7])) %>%
+    mutate(merged_into = stringr::str_replace(merged_into, '#Additional species represented by this clade: ', '')) %>% 
+    mutate(merged_into = stringr::str_split(merged_into, ',') %>% 
+             sapply(., function(x) {
+               if(!is.na(x)){
+                 return(x[!stringr::str_detect(x, '.*_sp_.*|.*_sp')])
+               }
+               else{
+                 return(c(''))
+               }
+               })) %>% 
+    mutate(merged_into = sapply(merged_into, function(x) if(length(x)==0) "" else x)) %>%
+    unnest(merged_into) %>%
+    left_join(., merged_mapping, by = c('merged_into' = 'oldspecies'))
+      
+    bin <- rbind(get_binary(mpa, gs, check_group = TRUE)) %>% data.frame %>% cbind(sample_id) %>% cbind(tool = c('MetaPhlAn2 v296'), dataset=dataset)
+    
+    mpa <- full_join(gs, mpa, by=c('@@TAXID'= '@@TAXID')) %>% mutate_if(is.numeric, funs(ifelse(is.na(.), 0, .))) %>% cbind(tool='MetaPhlAn2 v293', dataset) %>% select(-merged_into, -mergedinto, -oldtaxid)
+
+    all_binary_CAMI <- rbind(bin, all_binary_CAMI)
+    all_percent <- rbind(all_percent, mpa)
+  }
+}
+```
+
+```{r}
+opal_resutls %>%
+  filter(metric %in% c('Purity (precision)', 'Completeness (recall)', 'F1 score')) %>%
+  mutate(metric = factor(metric, levels = c('F1 score', 'Purity (precision)', 'Completeness (recall)'), labels = c('F1 score','Precision', 'Recall') )) %>%
+  mutate(dataset = factor(dataset, levels = c('Airways', 'Gastrointestinal_tract','Oral','Skin','Urogenital_tract', 'MOUSEGUT'), labels = c('Airways', 'Gastrointestinal\ntract','Oral','Skin','Urogenital\ntract', 'Mouse\ngut'))) %>% 
+ggplot() +
+  geom_boxplot(aes(tool, value, fill=tool)) +
+  facet_grid(metric ~ dataset, scales = 'free_y') +
+  theme_cm() +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        strip.text.y = element_text(angle = 0),
+        legend.position = 'bottom',
+        panel.spacing.y = unit(1,'lines')) + 
+  scale_fill_manual(values = cm_palette)
+```
+
+```{r message=FALSE, warning=FALSE}
+gca2taxon <- read_tsv('/shares/CIBIO-Storage/CM/scratch/users/francesco.beghini/hg/chocophlan/export_201901/gca2taxonomy_201901.txt')
+```
+
+
+# Non human dataset
+## Correlation plot Non human dataset
+```{r message=FALSE, warning=FALSE}
+all_percent_eric <- data.frame()
+all_binary_eric <- data.frame()
+for (sample_id in list.files('/shares/CIBIO-Storage/CM/mir/projects/fbeghini_CAMIEval/eric_mocks/output')) {
+    
+    gs <- suppressWarnings(read_tsv(paste0('/shares/CIBIO-Storage/CM/mir/projects/fbeghini_CAMIEval/eric_mocks/output/',sample_id,'/',sample_id, '.depth.tsv')) ) %>% 
+    mutate(relab = RelAbund*100) %>% 
+    # mutate(relab = relab*100,
+    #       taxid = stringr::str_split(stringr::str_split(fna, '/', simplify = TRUE)[,7], '\\.', simplify = TRUE)[,1] %>% 
+    #   data_frame(gca = .) %>% 
+    #   left_join(gca2taxon, by = c('gca' = 'GCA_accession')) %>%
+    #   select(gca, taxidstr) %>% 
+    #   mutate(taxidstr = stringr::str_split(taxidstr, "\\|", simplify = TRUE)[,7]) %>% 
+    #   pull(taxidstr) 
+    #   ) %>% 
+      select(taxidstr=1,relab) %>% 
+      filter(relab < 100) %>% 
+      mutate(gs_name = stringr::str_split(taxidstr, "\\.", simplify = TRUE)[,2]) %>% 
+      add_column(sample_id=sample_id)
+    
+    mpa <- suppressWarnings(read_tsv(paste0('/shares/CIBIO-Storage/CM/mir/projects/fbeghini_CAMIEval/eric_mocks/output/',sample_id, '/curated_markers/', sample_id, '.orig.cami_0225'), skip = 3 )) %>% 
+      filter(stringr::str_detect(`#clade_name`, 's__')) %>% 
+      mutate(NCBI_tax_id = stringr::str_split(NCBI_tax_id, '\\|', simplify = TRUE)[,7],
+             `#clade_name` = stringr::str_split(`#clade_name`, '\\|', simplify = TRUE)[,7]) %>% 
+      select(NCBI_tax_id, tool_name=`#clade_name`, tool_PERCENTAGE=relative_abundance) 
+    
+    # mpa20 <- suppressWarnings(read_tsv(paste0('/shares/CIBIO-Storage/CM/mir/projects/fbeghini_CAMIEval/eric_mocks/',sample_id, '/mpa_v20/', sample_id, '_profile.v20.tsv'), skip = 3)) %>%
+    #   filter(stringr::str_detect(`#clade_name`, 's__')) %>%
+    #   mutate(`#clade_name` = apply(stringr::str_split(`#clade_name`, '\\|', simplify = TRUE)[,c(6,7)], 1, paste, collapse='.')) %>%
+    #   select(tool_name=`#clade_name`, tool_PERCENTAGE=relative_abundance)
+    #   
+    # motus <- suppressWarnings(read_tsv(paste0('/shares/CIBIO-Storage/CM/mir/projects/fbeghini_CAMIEval/eric_mocks/',sample_id, '/mOTUs2_ouput/', sample_id, '.motus'), skip = 8)) %>%
+    # filter(RANK == 'species') %>%
+    # select(tool_taxid=`@@TAXID`, tool_name=TAXPATHSN, tool_PERCENTAGE=PERCENTAGE) %>% 
+    #   mutate(tool_taxid = as.character(tool_taxid))
+    # 
+    # bracken_refseq <- suppressWarnings(read_tsv(paste0('/shares/CIBIO-Storage/CM/mir/projects/fbeghini_CAMIEval/eric_mocks/',sample_id, '/bracken_output/', sample_id, '.bracken')) %>%
+    # select(tool_taxid=taxonomy_id, tool_name=name, tool_PERCENTAGE=fraction_total_reads) %>% 
+    #   mutate(tool_taxid=as.character(tool_taxid) , tool_PERCENTAGE = tool_PERCENTAGE * 100))
+    # 
+    # minikraken <- suppressWarnings(read_tsv(paste0('/shares/CIBIO-Storage/CM/mir/projects/fbeghini_CAMIEval/eric_mocks/',sample_id, '/bracken_minikraken_output/', sample_id, '.bracken')) %>%
+    # select(tool_taxid=taxonomy_id, tool_name=name, tool_PERCENTAGE=fraction_total_reads) %>% 
+    #   mutate(tool_taxid=as.character(tool_taxid), tool_PERCENTAGE = tool_PERCENTAGE * 100 ))
+    
+    bin <- rbind(get_binary(mpa, gs),
+          # get_binary(mpa20, gs),
+          # get_binary(motus, gs),
+          # get_binary(bracken_refseq, gs),
+          # get_binary(minikraken, gs)
+    ) %>% data.frame %>% cbind(sample_id) %>% cbind(tool = c('MetaPhlAn2 v29','MetaPhlAn2 v20', 'mOTUs2', 'Bracken RefSeq', 'Bracken MiniKraken'))
+    
+    mpa <- full_join(gs, mpa, by=c('gs_taxid'= 'tool_taxid')) %>% mutate_if(is.numeric, funs(ifelse(is.na(.), 0, .))) %>% cbind(tool='MetaPhlAn2 v29')
+    mpa20 <- full_join(gs, mpa20, by=c('gs_name'= 'tool_name')) %>% mutate_if(is.numeric, funs(ifelse(is.na(.), 0, .))) %>% cbind(tool='MetaPhlAn2 v20', tool_name = .$gs_name) 
+    motus <- full_join(gs, motus, by=c('gs_taxid'= 'tool_taxid')) %>% mutate_if(is.numeric, funs(ifelse(is.na(.), 0, .))) %>% cbind(tool='mOTUs2')
+    minikraken <- full_join(gs, minikraken, by=c('gs_taxid'= 'tool_taxid')) %>% mutate_if(is.numeric, funs(ifelse(is.na(.), 0, .))) %>% cbind(tool='Bracken MiniKraken')
+    bracken_refseq <- full_join(gs, bracken_refseq, by=c('gs_taxid'= 'tool_taxid')) %>% mutate_if(is.numeric, funs(ifelse(is.na(.), 0, .))) %>% cbind(tool='Bracken RefSeq')
+    
+    all_binary_eric <- rbind(all_binary_eric, bin)
+    all_percent_eric <- rbind(all_percent_eric, mpa, mpa20, motus, bracken_refseq, minikraken)
+}
+```
+
+```{r}
+gathered_all_percent_eric <- all_percent_eric %>% 
+gather(key = "key", value  = "tool", tool) %>% 
+  mutate(tool = factor(tool,  levels = c('MetaPhlAn2 v29', 'MetaPhlAn2 v20','mOTUs2', 'Bracken MiniKraken', 'Bracken RefSeq')))
+
+gathered_all_percent_eric %>%
+  group_by(tool) %>% 
+  summarise(corr = cor(gs_PERCENTAGE, tool_PERCENTAGE))
+
+gathered_all_percent_eric%>% 
+ggplot() + 
+  geom_point(aes(gs_PERCENTAGE,tool_PERCENTAGE, color=tool), alpha=0.3) +
+  theme_cm() +
+  theme(axis.line = element_line()) +
+  # ggtitle( paste0("Relative abundance\ncor=", formatC(corr_vals, 3, format='f'))) +
+  xlab('Expected Relative abundance (%)') + 
+  ylab('Predicted Relative Abunance (%)') +
+  scale_color_manual(values=cm_palette, name = 'Tools') +
+  scale_x_log10(labels = comma_format(accuracy = .001,  drop0trailing = TRUE)) +
+  scale_y_log10(labels = comma_format(accuracy = .001,  drop0trailing = TRUE)) +
+  expand_limits(x=100, y=100) +
+  facet_wrap(tool~.) + 
+  guides(color=FALSE)
+```
+
+
+```{r binary_nonhuman}
+all_binary_eric %>% 
+   mutate(tool = factor(tool,  levels = c('MetaPhlAn2 v29', 'MetaPhlAn2 v20','mOTUs2', 'Bracken MiniKraken', 'Bracken RefSeq')),
+          dataset="Non-human") %>% 
+  select(-TP,-FP,-FN) %>% 
+  gather(measure, value, -tool, -sample_id, -dataset) %>% 
+ggplot() + 
+  geom_boxplot(aes(tool, value, fill=tool), position = 'dodge') +
+  theme_cm() +
+  theme(axis.line = element_line(), legend.position = 'bottom') +
+  facet_wrap(.~measure) +
+  # ggtitle( paste0("Relative abundance\ncor=", formatC(corr_vals, 3, format='f'))) +
+  scale_fill_manual(values=cm_palette, name = 'Tools') +
+  expand_limits(y=1) +
+  scale_x_discrete(labels = NULL)
+```
+
+
+
+### CAMI datasets statq
+
+```{r}
+cami_folder <-
+  '/shares/CIBIO-Storage/CM/mir/projects/fbeghini_CAMIEval/opal_out/CAMI_II'
+opal_resutls_statq <- tibble()
+for (dataset in c(
+"CAMI_Airways_statq",
+"CAMI_Gastrointestinal_tract_statq",
+"CAMI_Oral_statq",
+"CAMI_Skin_statq",
+"CAMI_Urogenital_tract_statq"
+)) {
+opal_ds_result <-
+  readr::read_tsv(paste(cami_folder, dataset, "results.tsv", sep = '/')) %>% dplyr::filter(tool != 'Gold standard') %>% dplyr::filter(rank == 'species') %>% dplyr::bind_cols(dataset =   rep(stringr::str_split(dataset, '_', n = 2)[[1]][2], nrow(.)))
+  
+opal_resutls_statq %<>% bind_rows(opal_ds_result)
+}
+
+opal_resutls_statq %<>% 
+  mutate(tool = stringr::str_remove(tool, 'mpa294_statq')) %>% 
+  mutate(tool = stringr::str_replace(tool, '_','.')) %>%
+  mutate_at('tool', as.numeric)
+```
+
+```{r, fig.width=12}
+opal_resutls_statq %>%
+  filter(metric %in% c('Purity (precision)', 'Completeness (recall)', 'F1 score')) %>%
+ggplot(aes(tool, value, group=tool)) +
+  geom_boxplot() +
+  facet_grid(metric ~ dataset, scales = 'free_y') +
+  theme_cm() +
+  theme(axis.ticks = element_line(),
+        axis.text.x = element_text(angle = 90),
+        strip.text.y = element_text(angle = 0),
+        legend.position = 'bottom',
+        panel.spacing.y = unit(1,'lines')) +
+  scale_x_continuous(breaks = seq(0.1, 0.3, 0.025))
+```
+
+```{r, fig.width=12}
+opal_resutls_statq %>%
+  filter(metric %in% c('False negatives', 'False positives', 'Bray-Curtis distance')) %>%
+ggplot(aes(tool, value, group=tool)) +
+  geom_boxplot() +
+  facet_grid(metric ~ dataset, scales = 'free_y') +
+  theme_cm() +
+  theme(axis.ticks = element_line(),
+        axis.text.x = element_text(angle = 90),
+        strip.text.y = element_text(angle = 0),
+        legend.position = 'bottom',
+        panel.spacing.y = unit(1,'lines')) +
+  scale_x_continuous(breaks = seq(0.1, 0.3, 0.025))
+```
+
+```{r}
+spread(opal_resutls, metric, value) %>% 
+  filter(tool == 'mpa294_statq0_2') %>% 
+  select(TP = `True positives`,
+         FP = `False positives`,
+         FN = `False negatives`,
+         Precision = `Purity (precision)`,
+         Recall = `Completeness (recall)`,
+         `F1 score`,
+         sample_id = sample,
+         tool,
+         dataset,
+         BC= `Bray-Curtis distance`) %>% 
+  write_tsv('/shares/CIBIO-Storage/CM/mir/projects/fbeghini_CAMIEval/CAMI_II/mpa294_binary_measures.txt')
+```
+
+```{r}
+spread(opal_resutls, metric, value) %>% 
+  filter(tool == 'mpa294_statq0_2') %>% 
+  select(TP = `True positives`,
+         FP = `False positives`,
+         FN = `False negatives`,
+         Precision = `Purity (precision)`,
+         Recall = `Completeness (recall)`,
+         `F1 score`,
+         sample_id = sample,
+         tool,
+         dataset,
+         BC= `Bray-Curtis distance`) %>% 
+  group_by(dataset) %>% summarise(mean(`F1 score`), mean(Precision),mean(Recall),mean(BC), mean(TP), mean(FP), mean(FN),) %>% arrange(desc(dataset)) %>%  write_tsv('/shares/CIBIO-Storage/CM/mir/projects/fbeghini_CAMIEval/CAMI_II/mpa294_binary_measures_summary.txt')
+```
+
