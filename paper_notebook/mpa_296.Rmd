@@ -79,6 +79,8 @@ get_binary <- function(tool, gold_standard, check_group = FALSE){
 bray_curtis <- function(merged_tool_gold_standard) {
     return(sum(abs(merged_tool_gold_standard$tool_PERCENTAGE - merged_tool_gold_standard$gs_PERCENTAGE )) / sum(abs(merged_tool_gold_standard$tool_PERCENTAGE + merged_tool_gold_standard$gs_PERCENTAGE )))
 }
+
+dir.create('tables', showWarnings = FALSE)
 ```
 
 ## Bash scripts {.tabset}
@@ -112,6 +114,25 @@ do
     wait
 done
 
+for ds in CAMI_Skin CAMI_Gastrointestinal_tract CAMI_Airways CAMI_Oral CAMI_Urogenital_tract
+do
+    echo $ds
+    OUTPATH=/shares/CIBIO-Storage/CM/news/users/francesco.beghini/chocophlan_paper/CAMI_II/${ds}/mpa_v30_201901/
+    mkdir -p ${OUTPATH}
+    for s in `ls -d ${cami2_path}/${ds}/short_read/*sample* | xargs -n1 basename | rev | cut -f1,2 -d '_' | rev`
+    do
+        (metaphlan  \
+        --input_type bowtie2out \
+        --index mpa_v30_CHOCOPhlAn_201901 \
+        --sample_id ${s/sample_/} \
+        --output_file ${OUTPATH}/${s}.statq01.orig.cami \
+        --force \
+        --stat_q 0.1 \
+        ${OUTPATH}/${s}.bowtie2 ) &
+    done
+    wait
+done
+
 cami2_path_mouse=/shares/CIBIO-Storage/CM/scratch/data/meta/CAMI_datasets/CAMISIM_MOUSEGUT/19122017_mousegut_scaffolds/
 OUTPATH=/shares/CIBIO-Storage/CM/news/users/francesco.beghini/chocophlan_paper/CAMI_II/CAMISIM_MOUSEGUT/mpa_v30_201901/
 mkdir -p ${OUTPATH}
@@ -126,8 +147,20 @@ do
     --sample_id ${s/sample_/} \
     --output_file ${OUTPATH}/${s}.orig.cami \
     --force \
-    --CAMI_format_output \
     ${cami2_path_mouse}/*${s}/reads/anonymous_reads.fq.gz ) &
+done
+
+for s in `ls -d ${cami2_path_mouse}/*sample*/ | xargs -n1 basename | rev | cut -f1,2 -d '_' | rev`
+do
+    (metaphlan  \
+    --input_type bowtie2out \
+    --nproc 2 \
+    --index mpa_v30_CHOCOPhlAn_201901 \
+    --sample_id ${s/sample_/} \
+    --output_file ${OUTPATH}/${s}.statq01.orig.cami \
+    --force \
+    --stat_q 0.1 \
+    ${OUTPATH}/${s}.bowtie2 ) &
 done
 ```
 
@@ -352,6 +385,23 @@ for (dataset in c('CAMI_Airways','CAMI_Gastrointestinal_tract','CAMI_Oral','CAMI
     mutate(merged_into = sapply(merged_into, function(x) if(length(x)==0) "" else x)) %>%
     unnest(merged_into) %>%
     left_join(., merged_mapping, by = c('merged_into' = 'oldspecies'))
+    
+      mpa01 <- suppressMessages(read_tsv(paste0('/shares/CIBIO-Storage/CM/news/users/francesco.beghini/chocophlan_paper/CAMI_II/',dataset,'/mpa_v30_201901/sample_', sample_id, '.statq01.orig.cami'), skip = 4, col_names = c('tool_name','tool_taxid','tool_PERCENTAGE','merged_into'))) %>%
+    filter(stringr::str_detect(tool_name, 's__')) %>%
+    mutate(tool_taxid = as.numeric(stringr::str_split(tool_taxid, '\\|', simplify = TRUE)[,7])) %>%
+    mutate(merged_into = stringr::str_replace(merged_into, '#Additional species represented by this clade: ', '')) %>% 
+    mutate(merged_into = stringr::str_split(merged_into, ',') %>% 
+             sapply(., function(x) {
+               if(!is.na(x)){
+                 return(x[!stringr::str_detect(x, '.*_sp_.*|.*_sp|.*_bacterium_.*')])
+               }
+               else{
+                 return(c(''))
+               }
+               })) %>% 
+    mutate(merged_into = sapply(merged_into, function(x) if(length(x)==0) "" else x)) %>%
+    unnest(merged_into) %>%
+    left_join(., merged_mapping, by = c('merged_into' = 'oldspecies'))
       
     mpa20 <- suppressMessages(read_tsv(paste0('/shares/CIBIO-Storage/CM/news/users/francesco.beghini/chocophlan_paper/CAMI_II/',dataset, '/mpa2_v20/sample_', sample_id, '.profile'), skip = 4)) %>%
       filter(RANK == 'species') %>%
@@ -382,6 +432,7 @@ for (dataset in c('CAMI_Airways','CAMI_Gastrointestinal_tract','CAMI_Oral','CAMI
       filter(tool_PERCENTAGE > 0)
     
     bin <- rbind(get_binary(mpa, gs, check_group = TRUE),
+                 get_binary(mpa01, gs, check_group = TRUE),
                  get_binary(mpa20, gs, check_group = FALSE),
                  # get_binary(motus_parenthesis, gs, check_group = FALSE),
                  get_binary(motus_precision, gs, check_group = FALSE),
@@ -389,7 +440,7 @@ for (dataset in c('CAMI_Airways','CAMI_Gastrointestinal_tract','CAMI_Oral','CAMI
                  get_binary(bracken_refseq, gs, check_group = FALSE)) %>% 
       data.frame %>% 
       cbind(sample=sample_id) %>% 
-      cbind(tool = c('MetaPhlAn v3.0', 'MetaPhlAn2 v2.7', 'mOTUs251_precision', 'mOTUs251_recall', 'Bracken_208_25_refseq'), dataset=dataset)
+      cbind(tool = c('MetaPhlAn v3.0 stat_q 0.2','MetaPhlAn v3.0 stat_q 0.1', 'MetaPhlAn2 v2.7', 'mOTUs251_precision', 'mOTUs251_recall', 'Bracken_208_25_refseq'), dataset=dataset)
     
     tmp <- mpa[mpa$oldtaxid %in% gs$gs_taxid,]
     mpa %<>% filter(!(tool_taxid %in% tmp$gs_taxid))
@@ -403,13 +454,27 @@ for (dataset in c('CAMI_Airways','CAMI_Gastrointestinal_tract','CAMI_Oral','CAMI
     mpa <- bind_rows(mpa, tmp, toadd)
     mpa <- mpa %>% distinct(tool_taxid, .keep_all = TRUE)  %>% select(-merged_into, -mergedinto, -oldtaxid)
     
-    mpa <- full_join(gs, mpa, by=c("gs_taxid"= "tool_taxid")) %>% mutate_if(is.numeric, funs(ifelse(is.na(.), 0, .))) %>% cbind(tool='MetaPhlAn v3.0', dataset, sample=sample_id)
+    
+    tmp <- mpa01[mpa01$oldtaxid %in% gs$gs_taxid,]
+    mpa01 %<>% filter(!(tool_taxid %in% tmp$gs_taxid))
+    toadd <- c()
+    if(any(tmp$tool_taxid %in% gs$gs_taxid)){
+      toadd <- tmp[tmp$tool_taxid %in% gs$gs_taxid,]
+    }
+    
+    tmp$tool_taxid <- tmp$oldtaxid
+    tmp$tool_name <- tmp$merged_into
+    mpa01 <- bind_rows(mpa01, tmp, toadd)
+    mpa01 <- mpa01 %>% distinct(tool_taxid, .keep_all = TRUE)  %>% select(-merged_into, -mergedinto, -oldtaxid)
+    
+    mpa <- full_join(gs, mpa, by=c("gs_taxid"= "tool_taxid")) %>% mutate_if(is.numeric, funs(ifelse(is.na(.), 0, .))) %>% cbind(tool='MetaPhlAn v3.0 stat_q 0.2', dataset, sample=sample_id)
+    mpa01 <- full_join(gs, mpa01, by=c("gs_taxid"= "tool_taxid")) %>% mutate_if(is.numeric, funs(ifelse(is.na(.), 0, .))) %>% cbind(tool='MetaPhlAn v3.0 stat_q 0.1', dataset, sample=sample_id)
     mpa20 <- full_join(gs, mpa20, by=c("gs_taxid"= "tool_taxid")) %>% mutate_if(is.numeric, funs(ifelse(is.na(.), 0, .))) %>% cbind(tool='MetaPhlAn2 v2.7', dataset, sample=sample_id)
     motus_precision <- full_join(gs, motus_precision, by=c("gs_taxid"= "tool_taxid")) %>% mutate_if(is.numeric, funs(ifelse(is.na(.), 0, .))) %>% cbind(tool='mOTUs251_precision', dataset, sample=sample_id)
     motus_recall <- full_join(gs, motus_recall, by=c("gs_taxid"= "tool_taxid")) %>% mutate_if(is.numeric, funs(ifelse(is.na(.), 0, .))) %>% cbind(tool='mOTUs251_recall', dataset, sample=sample_id)
     bracken_refseq <- full_join(gs, bracken_refseq, by=c("gs_taxid"= "tool_taxid")) %>% mutate_if(is.numeric, funs(ifelse(is.na(.), 0, .))) %>% cbind(tool='Bracken_208_25_refseq', dataset, sample=sample_id)
     
-    bin <- cbind(bin, BC=c(bray_curtis(mpa),bray_curtis(mpa20), bray_curtis(motus_precision), bray_curtis(motus_recall), bray_curtis(bracken_refseq)))
+    bin <- cbind(bin, BC=c(bray_curtis(mpa),bray_curtis(mpa01),bray_curtis(mpa20), bray_curtis(motus_precision), bray_curtis(motus_recall), bray_curtis(bracken_refseq)))
     all_binary_CAMI <- rbind(bin, all_binary_CAMI)
     all_percent <- rbind(all_percent, mpa, mpa20, motus_precision, motus_recall, bracken_refseq)
   }
@@ -434,7 +499,7 @@ all_binary_CAMI$dataset <-
   fct_relevel(sort) %>%
   fct_recode('Mouse gut' = 'MOUSEGUT') %>% 
   fct_relevel('Mouse gut', after = Inf)
-all_binary_CAMI$tool = factor(all_binary_CAMI$tool, levels = c('MetaPhlAn v3.0', 'MetaPhlAn2 v2.7', 'mOTUs251_precision', 'mOTUs251_recall', 'Bracken_208_25_refseq'))
+all_binary_CAMI$tool = factor(all_binary_CAMI$tool, levels = c('MetaPhlAn v3.0 stat_q 0.2','MetaPhlAn v3.0 stat_q 0.1', 'MetaPhlAn2 v2.7', 'mOTUs251_precision', 'mOTUs251_recall', 'Bracken_208_25_refseq'))
 
 all_percent$dataset <- all_percent$dataset %>% 
   as_factor() %>% 
@@ -443,7 +508,11 @@ all_percent$dataset <- all_percent$dataset %>%
   fct_relevel(sort) %>%
   fct_recode('Mouse gut' = 'MOUSEGUT') %>% 
   fct_relevel('Mouse gut', after = Inf)
-all_percent$tool = factor(all_percent$tool, levels = c('MetaPhlAn v3.0', 'MetaPhlAn2 v2.7', 'mOTUs251_precision', 'mOTUs251_recall', 'Bracken_208_25_refseq'))
+all_percent$tool = factor(all_percent$tool, levels = c('MetaPhlAn v3.0 stat_q 0.2','MetaPhlAn v3.0 stat_q 0.1', 'MetaPhlAn2 v2.7', 'mOTUs251_precision', 'mOTUs251_recall', 'Bracken_208_25_refseq'))
+```
+
+```{r}
+write_tsv(all_binary_CAMI, 'tables/CAMI_binary_measures.tsv')
 ```
 
 
@@ -470,6 +539,21 @@ all_binary_CAMI %>%
   pack_rows('Skin', 16, 20) %>%
   pack_rows('Urogenital tract', 21, 25) %>% 
   pack_rows('Mouse gut', 26, 30)
+```
+
+```{r}
+all_binary_CAMI %>%
+  group_by(dataset, tool) %>%
+  summarise(`F1` = mean(F1),
+            `Precision` = mean(Precision),
+            `Recall` = mean(Recall),
+            `Bray-Curtis` = mean(BC),
+            `True Positives` = mean(TP),
+            `False Positives` = mean(FP),
+            `False Negatives` = mean(FN)
+  ) %>% 
+  ungroup() %>% 
+  write_tsv('tables/CAMI_binary_measures_summary.tsv')
 ```
 
 
@@ -553,16 +637,23 @@ cowplot::plot_grid(legend,align = 'h')
 
 ### Relative abundance correlation
 ```{r}
-all_percent %>%
-  group_by(dataset, tool) %>%
-  summarise(cor=cor(gs_PERCENTAGE,tool_PERCENTAGE)) %>% 
-  ungroup() %>% 
-  pivot_wider(names_from = dataset, values_from = cor,) %>% 
+cami_relab_corrs <- all_percent %>%
+                      group_by(dataset, tool) %>%
+                      summarise(cor=cor(gs_PERCENTAGE,tool_PERCENTAGE)) %>% 
+                      ungroup() %>% 
+                      pivot_wider(names_from = dataset, values_from = cor,) 
+
+cami_relab_corrs %>% 
   kable(digits = 3) %>% 
   kable_styling(bootstrap_options = 'striped', full_width = FALSE) %>% 
   row_spec(0, angle = 0, align = 'c') %>% 
   column_spec(1, bold = TRUE)
 ```
+
+```{r}
+write_tsv(cami_relab_corrs, 'tables/CAMI_relative_abundance_correlation.tsv')
+```
+
 
 ### Scatter plot expected vs predicted
 ```{r cor_plot_cami, fig.width=10}
@@ -648,6 +739,11 @@ b_div_measures %>%
   pack_rows('Mouse gut', 26, 30)
 
 ```
+
+```{r}
+write_tsv(b_div_measures, 'tables/CAMI_beta_diversity_measures.tsv')
+```
+
 ```{r eval=FALSE, include=FALSE}
 all_percent %>% 
   select(tool_name, gs_PERCENTAGE, tool_PERCENTAGE, tool, dataset, sample) %>% 
@@ -788,6 +884,11 @@ all_percent_nh$tool = factor(all_percent_nh$tool, levels = c('MetaPhlAn v3.0', '
 all_binary_nh$tool = factor(all_binary_nh$tool, levels = c('MetaPhlAn v3.0', 'MetaPhlAn2 v2.7', 'mOTUs251_precision', 'mOTUs251_recall', 'Bracken_208_25_refseq'))
 ```
 
+```{r}
+write_tsv(all_binary_nh, 'tables/synphlan_binary_measures.tsv')
+```
+
+
 ### Binary measures
 ```{r}
 all_binary_nh %>%
@@ -807,6 +908,22 @@ all_binary_nh %>%
   kable_styling(bootstrap_options = 'striped', full_width = FALSE) %>%
   row_spec(0, angle = 0, align = 'c')
 ```
+
+```{r}
+all_binary_nh %>%
+  group_by(dataset, tool) %>%
+  summarise(`F1` = mean(F1),
+            `Precision` = mean(Precision),
+            `Recall` = mean(Recall),
+            `Bray-Curtis` = mean(BC),
+            `True Positives` = mean(TP),
+            `False Positives` = mean(FP),
+            `False Negatives` = mean(FN)
+  ) %>% 
+  ungroup() %>% 
+  write_tsv('tables/synphlan_binary_measures_summary.tsv')
+```
+
 
 ### Plots per measure
 ```{r}
@@ -890,6 +1007,13 @@ all_percent_nh %>%
   kable(digits = 3) %>% 
   kable_styling(bootstrap_options = 'striped', full_width = FALSE) %>%
   row_spec(0, angle = 0, align = 'c') 
+```
+
+```{r}
+all_percent_nh %>%
+  group_by(tool) %>% 
+  summarise(corr = cor(gs_PERCENTAGE, tool_PERCENTAGE)) %>% 
+  write_tsv('tables/synphlan_relative_abundance_correlation.tsv')
 ```
 
 ### Scatter plot expected vs predicted
