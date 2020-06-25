@@ -28,7 +28,7 @@ theme_cm <- function(){
         strip.text = element_text(family = "sans-serif", size = 12, colour = "black"))
 }
 
-cm_palette <- c('#e41a1c','#377eb8','#4daf4a','#984ea3','#FF8F33','#FFE133','#6D3100')
+cm_palette <- c('#e41a1c','#FFE133','#377eb8','#4daf4a','#984ea3','#FF8F33','#FFE133','#6D3100')
 setwd('/shares/CIBIO-Storage/CM/news/users/francesco.beghini/chocophlan_paper/')
 
 
@@ -476,7 +476,7 @@ for (dataset in c('CAMI_Airways','CAMI_Gastrointestinal_tract','CAMI_Oral','CAMI
     
     bin <- cbind(bin, BC=c(bray_curtis(mpa),bray_curtis(mpa01),bray_curtis(mpa20), bray_curtis(motus_precision), bray_curtis(motus_recall), bray_curtis(bracken_refseq)))
     all_binary_CAMI <- rbind(bin, all_binary_CAMI)
-    all_percent <- rbind(all_percent, mpa, mpa20, motus_precision, motus_recall, bracken_refseq)
+    all_percent <- rbind(all_percent, mpa, mpa01, mpa20, motus_precision, motus_recall, bracken_refseq)
   }
     # opal_ds_result <- read_tsv(paste(opal_out_folder, dataset, "results.tsv", sep = '/')) %>% 
     #   filter(tool != 'Gold standard') %>% 
@@ -533,12 +533,12 @@ all_binary_CAMI %>%
   kable(digits = 3, ) %>% 
   kable_styling(bootstrap_options = 'striped', full_width = FALSE) %>% 
   row_spec(0, angle = 0, align = 'c') %>% 
-  pack_rows('Airways', 1, 5) %>% 
-  pack_rows('Gastrointestinal tract', 6, 10) %>% 
-  pack_rows('Oral', 11, 15) %>% 
-  pack_rows('Skin', 16, 20) %>%
-  pack_rows('Urogenital tract', 21, 25) %>% 
-  pack_rows('Mouse gut', 26, 30)
+  pack_rows('Airways', 1, 6) %>% 
+  pack_rows('Gastrointestinal tract', 7, 12) %>% 
+  pack_rows('Oral', 13, 18) %>% 
+  pack_rows('Skin', 19, 24) %>%
+  pack_rows('Urogenital tract', 25, 30) %>% 
+  pack_rows('Mouse gut', 31, 36)
 ```
 
 ```{r}
@@ -560,7 +560,7 @@ all_binary_CAMI %>%
 ```{r}
 x <- all_binary_CAMI %>% 
   select(-TP, -FP, -FN, -BC) %>% 
-  gather(metric, value, -dataset, -tool)  %>%
+  gather(metric, value, -dataset, -tool, -sample)  %>%
   mutate(value = as.double(value)) %>% 
   mutate(dataset = factor(dataset, levels = c('Airways', 'Gastrointestinal tract','Oral','Skin','Urogenital tract', 'Mouse gut'), labels = c('Airways', 'Gastrointestinal\ntract','Oral','Skin','Urogenital\ntract', 'Mouse\ngut')))
 ```
@@ -731,37 +731,17 @@ b_div_measures %>%
   kable(digits = 3) %>% 
   kable_styling(bootstrap_options = 'striped', full_width = FALSE) %>%
   row_spec(0, angle = 0, align = 'c') %>% 
-  pack_rows('Airways', 1, 5) %>% 
-  pack_rows('Gastrointestinal tract', 6, 10) %>% 
-  pack_rows('Oral', 11, 15) %>% 
-  pack_rows('Skin', 16, 20) %>%
-  pack_rows('Urogenital tract', 21, 25) %>% 
-  pack_rows('Mouse gut', 26, 30)
+  pack_rows('Airways', 1, 6) %>% 
+  pack_rows('Gastrointestinal tract', 7, 12) %>% 
+  pack_rows('Oral', 13, 18) %>% 
+  pack_rows('Skin', 19, 24) %>%
+  pack_rows('Urogenital tract', 25, 30) %>% 
+  pack_rows('Mouse gut', 31, 36)
 
 ```
 
 ```{r}
 write_tsv(b_div_measures, 'tables/CAMI_beta_diversity_measures.tsv')
-```
-
-```{r eval=FALSE, include=FALSE}
-all_percent %>% 
-  select(tool_name, gs_PERCENTAGE, tool_PERCENTAGE, tool, dataset, sample) %>% 
-  mutate(gs_PERCENTAGE_sqrtasin = asin(sqrt(gs_PERCENTAGE/100)), tool_PERCENTAGE_sqrtasin = asin(sqrt(tool_PERCENTAGE/100))) %>% 
-  group_by(tool, dataset, sample) %>%
-  summarise(bray_curtis = sum(abs(tool_PERCENTAGE - gs_PERCENTAGE )) / sum(abs(tool_PERCENTAGE + gs_PERCENTAGE )), 
-            bray_curtis_asin_sqrt = sum(abs(tool_PERCENTAGE_sqrtasin - gs_PERCENTAGE_sqrtasin )) / sum(abs(tool_PERCENTAGE_sqrtasin + gs_PERCENTAGE_sqrtasin )), 
-            bray_curtis_log1p = sum(abs(log1p(tool_PERCENTAGE) - log1p(gs_PERCENTAGE) )) / sum(abs(log1p(tool_PERCENTAGE) + log1p(gs_PERCENTAGE) )), 
-            bray_curtis_sqrt = sum(abs(sqrt(tool_PERCENTAGE) - sqrt(gs_PERCENTAGE) )) / sum(abs(sqrt(tool_PERCENTAGE) + sqrt(gs_PERCENTAGE) )), 
-            bray_curtis_cbrt =sum(abs(tool_PERCENTAGE^(1/3) - gs_PERCENTAGE^(1/3) )) / sum(abs(tool_PERCENTAGE^(1/3) + gs_PERCENTAGE^(1/3) ))
-            # aitchison_0min = dist(CoDaSeq::codaSeq.clr(estimate0.min(matrix(c(gs_PERCENTAGE,tool_PERCENTAGE), ncol = 2)), samples.by.row = FALSE)) %>% as.double,
-            # aitchison_CZM = dist(CoDaSeq::codaSeq.clr(zCompositions::cmultRepl(matrix(c(gs_PERCENTAGE,tool_PERCENTAGE), nrow = 2, byrow = TRUE), method = 'CZM',suppress.print = TRUE))) %>% as.double
-            ) %>% 
-  ungroup() %>% 
-  pivot_longer(bray_curtis_sqrt, names_to = 'measure', values_to = 'value') %>% 
-  ggplot() + 
-  geom_boxplot(aes(tool, value, fill=measure)) +
-  facet_grid(. ~ dataset)
 ```
 
 ```{r}
@@ -782,12 +762,14 @@ b_div_measures %>%
 ```{r}
 all_percent_nh <- data.frame()
 all_binary_nh <- data.frame()
-for (sample_id in list.files('/shares/CIBIO-Storage/CM/news/users/francesco.beghini/chocophlan_paper/eric_mocks/feb_2020')) {
+for (sample_id in list.files('/shares/CIBIO-Storage/CM/news/users/francesco.beghini/chocophlan_paper/eric_mocks/', pattern = 'nonhuman_[0-9]')) {
     
-    gs <- suppressMessages(read_tsv(paste0('/shares/CIBIO-Storage/CM/news/users/francesco.beghini/chocophlan_paper//eric_mocks/feb_2020/',sample_id,'/',sample_id, '.depth.tsv')) %>% 
-            select(gs_name=species, gs_PERCENTAGE = RelAbund))
+    gs <- suppressMessages(read_tsv(paste0('/shares/CIBIO-Storage/CM/news/users/francesco.beghini/chocophlan_paper//eric_mocks/',sample_id,'/',sample_id, '.depth.tsv'), skip = 2, col_names = FALSE) %>% 
+            select(gs_name=1, gs_PERCENTAGE = 10) %>% 
+            mutate(gs_name = gsub('^.*s__','s__', gs_name),
+                   gs_PERCENTAGE = gs_PERCENTAGE * 100))
     
-    mpa <- suppressMessages(read_tsv(paste0('/shares/CIBIO-Storage/CM/news/users/francesco.beghini/chocophlan_paper//eric_mocks/feb_2020/',sample_id,'/mpa_v30_201901/',sample_id, '_profile.v30.tsv'), skip = 4, col_names = c('tool_name','tool_taxid','tool_PERCENTAGE','merged_into'))) %>% 
+    mpa <- suppressMessages(read_tsv(paste0('/shares/CIBIO-Storage/CM/news/users/francesco.beghini/chocophlan_paper//eric_mocks/',sample_id,'/mpa_30/',sample_id, '_profile.tsv'), skip = 4, col_names = c('tool_name','tool_taxid','tool_PERCENTAGE','merged_into'))) %>% 
       filter(stringr::str_detect(`tool_name`, 's__')) %>% 
       mutate(merged_into = stringr::str_replace(merged_into, '#Additional species represented by this clade: ', '')) %>% 
       mutate(merged_into = stringr::str_split(merged_into, ',') %>% 
@@ -807,17 +789,37 @@ for (sample_id in list.files('/shares/CIBIO-Storage/CM/news/users/francesco.begh
              merged_into = ifelse(!all(merged_into ==''), stringr::str_split(merged_into, '\\|', simplify = TRUE)[,7], merged_into)
            )
     
-    mpa20 <- suppressMessages(read_tsv(paste0('/shares/CIBIO-Storage/CM/news/users/francesco.beghini/chocophlan_paper/eric_mocks/feb_2020/',sample_id,'/mpa_v27/',sample_id, '_profile.v27.tsv'))) %>% 
+    mpa_statq_01 <- suppressMessages(read_tsv(paste0('/shares/CIBIO-Storage/CM/news/users/francesco.beghini/chocophlan_paper/eric_mocks/',sample_id,'/mpa_30_stat_q_0.1/',sample_id, '_profile.tsv'), skip = 4, col_names = c('tool_name','tool_taxid','tool_PERCENTAGE','merged_into'))) %>% 
+      filter(stringr::str_detect(`tool_name`, 's__')) %>% 
+      mutate(merged_into = stringr::str_replace(merged_into, '#Additional species represented by this clade: ', '')) %>% 
+      mutate(merged_into = stringr::str_split(merged_into, ',') %>% 
+               sapply(., function(x) {
+                 if(!is.na(x)){
+                   return(x[!stringr::str_detect(x, '.*_sp_.*|.*_sp|.*_bacterium_.*|.*genomosp.*')])
+                 }
+                 else{
+                   return(c(''))
+                 }
+                 })) %>% 
+      mutate(merged_into = sapply(merged_into, function(x) if(length(x)==0) "" else x)) %>%
+      unnest(merged_into) %>%
+      left_join(., merged_mapping, by = c('merged_into' = 'oldspecies')) %>% 
+      mutate(tool_taxid = as.double(stringr::str_split(tool_taxid, '\\|', simplify = TRUE)[,7]),
+             tool_name = stringr::str_split(tool_name, '\\|', simplify = TRUE)[,7],
+             merged_into = ifelse(!all(merged_into ==''), stringr::str_split(merged_into, '\\|', simplify = TRUE)[,7], merged_into)
+           )
+    
+    mpa20 <- suppressMessages(read_tsv(paste0('/shares/CIBIO-Storage/CM/news/users/francesco.beghini/chocophlan_paper/eric_mocks/',sample_id,'/mpa_v27/',sample_id, '_profile.tsv'))) %>% 
       filter(stringr::str_detect(`#SampleID`, 's__')) %>% 
       mutate(tool_name = stringr::str_split(`#SampleID`, '\\|', simplify = TRUE)[,7], tool_taxid = 0) %>% 
       select(tool_name, tool_taxid, tool_PERCENTAGE = 2)
     
-    motus_precision <- suppressMessages(read_tsv(paste0('/shares/CIBIO-Storage/CM/news/users/francesco.beghini/chocophlan_paper/eric_mocks/feb_2020/',sample_id, '/mOTUs251_output/', sample_id, '.precision.motus'), skip = 8)) %>%
+    motus_precision <- suppressMessages(read_tsv(paste0('/shares/CIBIO-Storage/CM/news/users/francesco.beghini/chocophlan_paper/eric_mocks/',sample_id, '/mOTUs251_output/', sample_id, '.precision.motus'), skip = 8)) %>%
       filter(RANK == 'species') %>%
       select(tool_taxid=`@@TAXID`, tool_name=TAXPATHSN, tool_PERCENTAGE=PERCENTAGE) %>% 
       mutate(tool_name = paste0('s__', stringr::str_replace(stringr::str_split(tool_name, '\\|', simplify = TRUE)[,7], ' ','_')))
 
-    motus_recall <- suppressMessages(read_tsv(paste0('/shares/CIBIO-Storage/CM/news/users/francesco.beghini/chocophlan_paper/eric_mocks/feb_2020/',sample_id, '/mOTUs251_output/', sample_id, '.recall.motus'), skip = 8)) %>%
+    motus_recall <- suppressMessages(read_tsv(paste0('/shares/CIBIO-Storage/CM/news/users/francesco.beghini/chocophlan_paper/eric_mocks/',sample_id, '/mOTUs251_output/', sample_id, '.recall.motus'), skip = 8)) %>%
       filter(RANK == 'species') %>%
       select(tool_gname=TAXPATHSN, tool_PERCENTAGE=PERCENTAGE, tool_taxid = `@@TAXID`) %>% 
       mutate(tool_name = stringr::str_split(tool_gname, '\\|', simplify = TRUE)[,7] %>% 
@@ -827,13 +829,14 @@ for (sample_id in list.files('/shares/CIBIO-Storage/CM/news/users/francesco.begh
       distinct(tool_name, .keep_all = TRUE) %>% 
       select(-tool_gname)
 
-    bracken_refseq <- suppressMessages(read_tsv(paste0('/shares/CIBIO-Storage/CM/news/users/francesco.beghini/chocophlan_paper/eric_mocks/feb_2020/',sample_id,'/bracken_output/',sample_id, '.bracken'))) %>% 
+    bracken_refseq <- suppressMessages(read_tsv(paste0('/shares/CIBIO-Storage/CM/news/users/francesco.beghini/chocophlan_paper/eric_mocks/',sample_id,'/bracken_output/',sample_id, '.bracken'))) %>% 
       select(tool_taxid=taxonomy_id, tool_name=name, tool_PERCENTAGE=fraction_total_reads) %>% 
       mutate(tool_PERCENTAGE = tool_PERCENTAGE * 100,
              tool_name = paste0('s__', stringr::str_replace(tool_name, ' ', '_'))
            )
     
     bin <-  rbind(get_binary(mpa, gs, check_group = TRUE),
+      get_binary(mpa_statq_01, gs, check_group = TRUE),
       get_binary(mpa20, gs, check_group = FALSE),
       get_binary(motus_precision, gs, check_group = FALSE),
       get_binary(motus_recall, gs, check_group = FALSE),
@@ -841,7 +844,7 @@ for (sample_id in list.files('/shares/CIBIO-Storage/CM/news/users/francesco.begh
       ) %>% 
       data.frame %>% 
       cbind(sample=sample_id) %>% 
-      cbind(tool = c('MetaPhlAn v3.0', 'MetaPhlAn2 v2.7', 'mOTUs251_precision', 'mOTUs251_recall', 'Bracken_208_25_refseq'))
+      cbind(tool = c('MetaPhlAn v3.0 stat_q 0.2','MetaPhlAn v3.0 stat_q 0.1', 'MetaPhlAn2 v2.7', 'mOTUs251_precision', 'mOTUs251_recall', 'Bracken_208_25_refseq'))
 
     tmp <- mpa[mpa$merged_into %in% gs$gs_name,]
     mpa %<>% filter(!(tool_name %in% tmp$tool_name))
@@ -855,10 +858,27 @@ for (sample_id in list.files('/shares/CIBIO-Storage/CM/news/users/francesco.begh
     mpa <- bind_rows(mpa, tmp, toadd)
     mpa <- mpa %>% distinct(tool_taxid, .keep_all = TRUE)  %>% select(-merged_into, -mergedinto, -oldtaxid)
     
+    
+    tmp <- mpa_statq_01[mpa_statq_01$merged_into %in% gs$gs_name,]
+    mpa_statq_01 %<>% filter(!(tool_name %in% tmp$tool_name))
+    toadd <- c()
+    if(any(tmp$tool_name %in% gs$gs_name)){
+      toadd <- tmp[tmp$tool_name %in% gs$gs_name,]
+    }
+    
+    tmp$tool_taxid <- tmp$oldtaxid
+    tmp$tool_name <- tmp$merged_into
+    mpa_statq_01 <- bind_rows(mpa_statq_01, tmp, toadd)
+    mpa_statq_01 <- mpa_statq_01 %>% distinct(tool_taxid, .keep_all = TRUE)  %>% select(-merged_into, -mergedinto, -oldtaxid)
+    
     mpa <-
       full_join(gs, mpa, by = c("gs_name" = "tool_name")) %>% 
       mutate_if(is.numeric, funs(ifelse(is.na(.), 0, .))) %>% 
-      add_column(tool = 'MetaPhlAn v3.0',  dataset = 'Non-human', sample = sample_id)
+      add_column(tool = 'MetaPhlAn v3.0 stat_q 0.2',  dataset = 'Non-human', sample = sample_id)
+    mpa_statq_01 <-
+      full_join(gs, mpa_statq_01, by = c("gs_name" = "tool_name")) %>% 
+      mutate_if(is.numeric, funs(ifelse(is.na(.), 0, .))) %>% 
+      add_column(tool = 'MetaPhlAn v3.0 stat_q 0.1',  dataset = 'Non-human', sample = sample_id)
     mpa20 <-
       full_join(gs, mpa20, by = c("gs_name" = "tool_name")) %>%
       mutate_if(is.numeric, funs(ifelse(is.na(.), 0, .))) %>% 
@@ -876,12 +896,12 @@ for (sample_id in list.files('/shares/CIBIO-Storage/CM/news/users/francesco.begh
       mutate_if(is.numeric, funs(ifelse(is.na(.), 0, .))) %>% 
       add_column(tool = 'Bracken_208_25_refseq', dataset = 'Non-human', sample = sample_id)
     
-    bin <- cbind(bin, BC=c(bray_curtis(mpa),bray_curtis(mpa20), bray_curtis(motus_precision), bray_curtis(motus_recall), bray_curtis(bracken_refseq)), dataset = 'Non-human')
+    bin <- cbind(bin, BC=c(bray_curtis(mpa),bray_curtis(mpa_statq_01),bray_curtis(mpa20), bray_curtis(motus_precision), bray_curtis(motus_recall), bray_curtis(bracken_refseq)), dataset = 'Non-human')
     all_binary_nh <- rbind(bin, all_binary_nh)
-    all_percent_nh <- rbind(all_percent_nh, mpa, mpa20, motus_precision, motus_recall, bracken_refseq)
+    all_percent_nh <- rbind(all_percent_nh, mpa, mpa_statq_01, mpa20, motus_precision, motus_recall, bracken_refseq)
 }
-all_percent_nh$tool = factor(all_percent_nh$tool, levels = c('MetaPhlAn v3.0', 'MetaPhlAn2 v2.7', 'mOTUs251_precision', 'mOTUs251_recall', 'Bracken_208_25_refseq'))
-all_binary_nh$tool = factor(all_binary_nh$tool, levels = c('MetaPhlAn v3.0', 'MetaPhlAn2 v2.7', 'mOTUs251_precision', 'mOTUs251_recall', 'Bracken_208_25_refseq'))
+all_percent_nh$tool = factor(all_percent_nh$tool, levels = c('MetaPhlAn v3.0 stat_q 0.2','MetaPhlAn v3.0 stat_q 0.1', 'MetaPhlAn2 v2.7', 'mOTUs251_precision', 'mOTUs251_recall', 'Bracken_208_25_refseq'))
+all_binary_nh$tool = factor(all_binary_nh$tool, levels = c('MetaPhlAn v3.0 stat_q 0.2','MetaPhlAn v3.0 stat_q 0.1', 'MetaPhlAn2 v2.7', 'mOTUs251_precision', 'mOTUs251_recall', 'Bracken_208_25_refseq'))
 ```
 
 ```{r}
@@ -904,7 +924,7 @@ all_binary_nh %>%
   ungroup() %>% 
   select(-dataset) %>%
   kable(digits = 3) %>% 
-  pack_rows('Non-Human', 1, 5) %>%   
+  pack_rows('Non-Human', 1, 6) %>%   
   kable_styling(bootstrap_options = 'striped', full_width = FALSE) %>%
   row_spec(0, angle = 0, align = 'c')
 ```
@@ -929,7 +949,7 @@ all_binary_nh %>%
 ```{r}
 x_nh <- all_binary_nh %>% 
   select(-TP, -FP, -FN, -BC) %>% 
-  gather(metric, value, -dataset, -tool)  %>%
+  gather(metric, value, -dataset, -tool, -sample)  %>%
   mutate(value = as.double(value))
 ```
 
@@ -1167,6 +1187,16 @@ kable() %>%
 kable_styling(bootstrap_options = 'striped', full_width = FALSE) %>%
 row_spec(0, angle = 0, align = 'c') 
 ```
+```{r}
+performance_stats %>%
+  filter(tool != 'bracken') %>% 
+  select(-sample, -total_reads) %>% 
+  group_by(tool) %>% 
+  summarise_all(sd) %>%
+kable() %>%
+kable_styling(bootstrap_options = 'striped', full_width = FALSE) %>%
+row_spec(0, angle = 0, align = 'c') 
+```
 
 ```{r memory_time_plot, fig.width=7}
 performance_stats %>%
@@ -1185,6 +1215,8 @@ performance_stats %>%
 ```
 
 
+
+## Merge all
 ```{r echo=FALSE}
 all_x <- bind_rows(x, x_nh)
 all_x$dataset %<>% forcats::fct_relevel('Mouse\ngut', after = Inf)
@@ -1226,6 +1258,7 @@ ggplot() +
 
 f1_all <- all_x %>% 
   filter(metric == 'F1') %>% 
+  filter(tool != 'MetaPhlAn v3.0 stat_q 0.1') %>% 
 ggplot() +
   geom_boxplot(aes(tool, value, fill=tool)) +
   facet_grid(. ~ dataset, scales = 'free_y') +
@@ -1238,11 +1271,10 @@ ggplot() +
         legend.position = 'none',
         panel.spacing.y = unit(1,'lines'),
         panel.spacing.x = unit(1,'lines')) + 
-  scale_fill_manual(values = cm_palette) + 
+  scale_fill_manual(values = cm_palette[-2]) + 
   ylim(0,1)  
 
 ```
-
 
 ```{r precision_all, fig.height=3, fig.width=11, include=FALSE}
 pr_all + theme(axis.line = element_line(), legend.position = 'none', panel.grid.major.y = element_line(color = "gray73"))
@@ -1265,20 +1297,15 @@ bc <- bind_rows(all_percent, all_percent_nh) %>%
                         bray_curtis = sqrt(sum(abs(tool_PERCENTAGE - gs_PERCENTAGE )) / sum(abs(tool_PERCENTAGE + gs_PERCENTAGE)))) %>% 
               ungroup() %>% 
               group_by(dataset, tool) %>% 
-              # summarise(mean_bray_curtis_sqrtasin = mean(bray_curtis_sqrtasin)) %>% 
-              # mutate(rank_bray_curtis_sqrtasin = min_rank(mean_bray_curtis_sqrtasin)) %>% 
               ungroup() %>% 
-              # filter_at(vars(starts_with('rank_')), any_vars(. < 4)) %>% 
-              # select(dataset, tool, rank_bray_curtis_sqrtasin) %>% 
-              # filter(rank_bray_curtis_sqrtasin < 4) %>% 
-              mutate(tool = factor(tool, levels = c('MetaPhlAn v3.0', 'MetaPhlAn2 v2.7', 'mOTUs251_precision', 'mOTUs251_recall', 'Bracken_208_25_refseq')),
+              mutate(tool = factor(tool, levels = c('MetaPhlAn v3.0 stat_q 0.2','MetaPhlAn v3.0 stat_q 0.1', 'MetaPhlAn2 v2.7', 'mOTUs251_precision', 'mOTUs251_recall', 'Bracken_208_25_refseq')),
                      dataset = factor(dataset, levels = c('Airways', 'Gastrointestinal tract','Oral','Skin','Urogenital tract', 'Mouse gut', 'Non-human'), labels = c('Airways', 'Gastrointestinal\ntract','Oral','Skin','Urogenital\ntract', 'Mouse\ngut', 'Non-human')))
 
 filt_bc <-  bc %>%
               filter(dataset %in% c('Gastrointestinal\ntract','Non-human','Mouse\ngut'))
 ```
 
-```{r barplot_bc, fig.height=3, fig.width=10, include=FALSE}
+```{r barplot_bc, fig.height=3, fig.width=11, include=FALSE}
 bc %>% 
   ggplot(aes(tool, 1-bray_curtis_sqrtasin, fill = tool)) +
   geom_boxplot() +
@@ -1297,11 +1324,12 @@ bc %>%
 
 ```{r barplot_filt_bc, fig.width=3.5, fig.height=2.5}
 filt_bc %>% 
+  filter(tool != 'MetaPhlAn v3.0 stat_q 0.1') %>% 
   ggplot(aes(tool, 1-bray_curtis_sqrtasin, fill = tool)) +
   geom_boxplot() +
   facet_wrap(dataset ~ ., scales = 'free_x', nrow = 1) +
   theme_cm() + 
-  scale_fill_manual(values = cm_palette) + 
+  scale_fill_manual(values = cm_palette[-2]) + 
   theme(axis.text.x = element_blank(),
         axis.line = element_line(),
         panel.spacing.y = unit(1,'lines'),
@@ -1317,7 +1345,7 @@ filt_bc %>%
 ```{r cor_plot_all, fig.width=11.5, fig.height=8}
 bind_rows(all_percent_nh, all_percent) %>% 
   mutate(dataset = factor(dataset, levels = c('Airways', 'Gastrointestinal tract','Oral','Skin','Urogenital tract', 'Mouse gut', 'Non-human'), labels = c('Airways', 'Gastrointestinal\ntract','Oral','Skin','Urogenital\ntract', 'Mouse\ngut', 'Non-human'))) %>% 
-  mutate(tool = factor(tool, levels = c('MetaPhlAn v3.0', 'MetaPhlAn2 v2.7', 'mOTUs251_precision', 'mOTUs251_recall', 'Bracken_208_25_refseq'), labels = c('MetaPhlAn v3.0', 'MetaPhlAn2 v2.7', 'mOTUs2_precision', 'mOTUs2_recall', 'Bracken 2'))) %>% 
+  mutate(tool = factor(tool, levels = c('MetaPhlAn v3.0 stat_q 0.2','MetaPhlAn v3.0 stat_q 0.1', 'MetaPhlAn2 v2.7', 'mOTUs251_precision', 'mOTUs251_recall', 'Bracken_208_25_refseq'), labels = c('MetaPhlAn v3.0 stat_q 0.2','MetaPhlAn v3.0 stat_q 0.1', 'MetaPhlAn2 v2.7', 'mOTUs2_precision', 'mOTUs2_recall', 'Bracken 2'))) %>% 
   # mutate(gs_PERCENTAGE = log10(1+gs_PERCENTAGE),
          # tool_PERCENTAGE = log10(1+tool_PERCENTAGE)) %>% 
 ggplot() + 
@@ -1334,6 +1362,36 @@ ggplot() +
   guides(color=FALSE) +
   theme(
       # strip.text.y = element_text(angle = 0),
+      panel.spacing.y = unit(1,'lines'),
       axis.text.x = element_text(angle=45)
         )
+```
+
+```{r f1_scatter_statq_01_02}
+all_x %>% 
+  filter(metric == 'F1') %>% 
+  filter(tool %in% c('MetaPhlAn v3.0 stat_q 0.2', 'MetaPhlAn v3.0 stat_q 0.1')) %>% 
+  pivot_wider(names_from = 'tool', values_from = 'value') %>% 
+  ggplot(aes(x = `MetaPhlAn v3.0 stat_q 0.2`, y=`MetaPhlAn v3.0 stat_q 0.1`, color = dataset), size = 4) + 
+  geom_point() +
+  theme_cm() +theme(axis.line = element_line(),
+                    axis.text = element_text(size=12),
+                    axis.title = element_text(size=12),
+                    panel.grid.major = element_line(color = "gray80"),
+                    panel.grid.minor = element_line(color = "gray90"),
+                    legend.text = element_text(size=10),
+                    legend.title = element_text(size=12)) +
+  labs(color = "Dataset") +
+  xlim(c(0.65,1)) + ylim(c(0.65,1)) + 
+  xlab('F1 score stat_q 0.2') +
+  ylab('F1 score stat_q 0.1')
+```
+```{r}
+kk <- all_x %>% 
+  filter(metric == 'F1') %>% 
+  filter(tool %in% c('MetaPhlAn v3.0 stat_q 0.2', 'MetaPhlAn v3.0 stat_q 0.1')) %>% 
+  pivot_wider(names_from = 'tool', values_from = 'value') %>% 
+  select(-metric)
+
+cor(kk$`MetaPhlAn v3.0 stat_q 0.2`,kk$`MetaPhlAn v3.0 stat_q 0.1`)
 ```
