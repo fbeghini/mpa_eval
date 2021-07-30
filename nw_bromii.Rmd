@@ -9,19 +9,19 @@ library(dplyr)
 library(magrittr)
 ```
 ```{r}
-setwd('/shares/CIBIO-Storage/CM/news/users/francesco.beghini/chocophlan_paper/')
+setwd('/shares/CIBIO-Storage/CM/scratch/users/francesco.beghini/chocophlan_paper/')
 ```
 
 ```{bash}
-cat /shares/CIBIO-Storage/CM/news/users/leonard.dubois/rbromii4000_panphlan/cluster1.tree | tr ',' '\n' | tr -d '('| tr -d ')' | tr -d "'" | cut -f1 -d ':' > /tmp/cluster2
-cat /shares/CIBIO-Storage/CM/news/users/leonard.dubois/rbromii4000_panphlan/cluster2.tree | tr ',' '\n' | tr -d '('| tr -d ')' | tr -d "'" | cut -f1 -d ':' > /tmp/cluster1
+cat /shares/CIBIO-Storage/CM/scratch/users/leonard.dubois/rbromii4000_panphlan/cluster1.tree | tr ',' '\n' | tr -d '('| tr -d ')' | tr -d "'" | cut -f1 -d ':' > /tmp/cluster2
+cat /shares/CIBIO-Storage/CM/scratch/users/leonard.dubois/rbromii4000_panphlan/cluster2.tree | tr ',' '\n' | tr -d '('| tr -d ')' | tr -d "'" | cut -f1 -d ':' > /tmp/cluster1
 ```
 
 
 
 ```{r}
-panphlan_table <- fread('/shares/CIBIO-Storage/CM/news/users/leonard.dubois/rbromii4000_panphlan/profile_4000_rbromii.csv')
-metadata <- fread('/shares/CIBIO-Storage/CM/news/users/leonard.dubois/rbromii4000_panphlan/metadata_eu.csv')
+panphlan_table <- fread('/shares/CIBIO-Storage/CM/scratch/users/leonard.dubois/rbromii4000_panphlan/profile_4000_rbromii.csv')
+metadata <- fread('/shares/CIBIO-Storage/CM/scratch/users/leonard.dubois/rbromii4000_panphlan/metadata_eu.csv')
 metadata$sampleID <- sapply(strsplit(metadata$sampleID, '__'), `[`,2)
 
 cluster2_samples <- fread('/tmp/cluster2', col.names = c('sampleID'))
@@ -163,12 +163,31 @@ ax <- ax[pvalue<0.05 & OR>1]
 write.table(ax, 'rbromii_clust1_ass.tsv', row.names = FALSE, quote = FALSE, sep = '\t')
 ```
 
+## Cluster 1 enriched for Chinese samples
+```{r}
+merged_cluster1 <- merge(metadata, cluster1_samples, by.x ='sampleID', by.y = 'sampleID', all.x = TRUE)
+merged_cluster1 <- merged_cluster1[subjectID != 'REF']
+merged_cluster1$cluster[is.na(merged_cluster1$cluster)] <- 'other'
+
+ch1 <- nrow(merged_cluster1[subjectID == 'CHN' & cluster == 1])
+cho <- nrow(merged_cluster1[subjectID == 'CHN' & cluster != 1])
+al1 <- nrow(merged_cluster1[subjectID != 'CHN' & cluster == 1])
+alo <- nrow(merged_cluster1[subjectID != 'CHN' & cluster != 1])
+
+mat <- matrix(c(ch1, cho, al1, alo), ncol = 2, byrow = TRUE, dimnames = list(c('1','other'),c('CHN','OTH')))
+tmp <- fisher.test(mat)
+p <- tmp$p.value
+# or <- (mat[1,2]/mat[1,1]) / (mat[2,2]/mat[2,1])
+or <- tmp$estimate[[1]]
+```
+
+
 
 
 ## To NR50
 ```{r}
-# rbromii_annot <- fread('/shares/CIBIO-Storage/CM/news/users/francesco.beghini/hg/chocophlan/export_201901/humann2/HUMAnN_3.0_CHOCOPhlAn_201901_functional_annotation_mapping.tsv', sep = '\t', nThread = 12)
-# c <- fread('/shares/CIBIO-Storage/CM/news/users/leonard.dubois/PanPhlAn_work/old_pangenomes/panphlan_rbromii_pangenome.csv', nThread = 12)
+# rbromii_annot <- fread('/shares/CIBIO-Storage/CM/scratch/users/francesco.beghini/hg/chocophlan/export_201901/humann2/HUMAnN_3.0_CHOCOPhlAn_201901_functional_annotation_mapping.tsv', sep = '\t', nThread = 12)
+# c <- fread('/shares/CIBIO-Storage/CM/scratch/users/leonard.dubois/PanPhlAn_work/old_pangenomes/panphlan_rbromii_pangenome.csv', nThread = 12)
 
 clusters <- data.frame(sample_names, cluster)
 clusters <- unique(clusters)
@@ -211,6 +230,6 @@ write.table(ax, 'rbromii_clust2_ass_NR50.tsv', row.names = FALSE, quote = FALSE,
 ```
 
 ```{r}
-NR50names <- fread('/shares/CIBIO-Storage/CM/news/users/francesco.beghini/chocophlan_paper/cluster2_enrich_names', col.names = c('NR50','descr'))
+NR50names <- fread('/shares/CIBIO-Storage/CM/scratch/users/francesco.beghini/chocophlan_paper/cluster2_enrich_names', col.names = c('NR50','descr'))
 mergedax <- merge(ax, NR50names, by.x='V1', by.y ='NR50')
 ```
